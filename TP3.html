@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>TP3 - Gestion de tâches</title>
+    <script src="https://unpkg.com/vue@3"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+        }
+        .tache {
+            border: 1px solid #ccc;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .terminee {
+            background: #e0ffe0;
+        }
+        button {
+            margin-right: 0.5rem;
+            padding: 0.4rem 0.8rem;
+        }
+        .actif {
+            background: #4287f5;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <task-list></task-list>
+    </div>
+
+    <script>
+        const app = Vue.createApp({});
+
+        app.component('task-list', {
+            template: `
+                <div>
+                    <h1>Mes tâches</h1>
+                    <p>Nombre total de tâches : {{ nombreTotal }}</p>
+
+                    <button :class="{ actif: filtre == 'toutes' }" @click="filtre = 'toutes'">Toutes</button>
+                    <button :class="{ actif: filtre == 'afaire' }" @click="filtre = 'afaire'">À faire</button>
+                    <button :class="{ actif: filtre == 'terminees' }" @click="filtre = 'terminees'">Terminées</button>
+
+                    <p v-if="tachesAffichees.length == 0">Aucune tâche à afficher.</p>
+
+                    <div class="tache" :class="{ terminee: t.completed }" v-for="t in tachesAffichees" :key="t.id">
+                        <h3>{{ t.title }}</h3>
+                        <p>{{ t.description }}</p>
+                        <p>État : {{ t.completed ? 'Terminée' : 'À faire' }}</p>
+                        <button v-show="!t.completed" @click="terminer(t.id)">Marquer comme terminée</button>
+                    </div>
+                </div>
+            `,
+            data() {
+                return {
+                    taches: [],
+                    filtre: 'toutes'
+                }
+            },
+            computed: {
+                nombreTotal() {
+                    return this.taches.length;
+                },
+                tachesAffichees() {
+                    if (this.filtre == 'afaire') {
+                        return this.taches.filter(t => !t.completed);
+                    }
+                    if (this.filtre == 'terminees') {
+                        return this.taches.filter(t => t.completed);
+                    }
+                    return this.taches;
+                }
+            },
+            methods: {
+                terminer(id) {
+                    for (let i = 0; i < this.taches.length; i++) {
+                        if (this.taches[i].id == id) {
+                            this.taches[i].completed = true;
+                        }
+                    }
+                }
+            },
+            mounted() {
+                fetch('taskList.json')
+                    .then(reponse => reponse.json())
+                    .then(donnees => {
+                        this.taches = donnees;
+                    });
+            }
+        });
+
+        app.mount('#app');
+    </script>
+</body>
+</html>

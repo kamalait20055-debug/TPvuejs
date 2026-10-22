@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Catalogue de livres</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: 20px auto; }
+    .book { border: 1px solid #ccc; border-radius: 8px; padding: 10px; margin: 10px 0; background: #fafafa; cursor: pointer; }
+    .favori { border: 2px solid #d4a017; background: #fff8e1; }
+    .badge-favori { background: #d4a017; color: white; font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+    .chip { display: inline-block; background: #dbeafe; color: #1e40af; border-radius: 12px; padding: 2px 8px; margin: 2px; font-size: 13px; }
+    .chip button { border: none; background: none; cursor: pointer; color: #1e40af; }
+    form { background: #f3f4f6; padding: 10px; border-radius: 8px; }
+    form p { margin: 6px 0; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <h1>Catalogue de livres</h1>
+  <p>{{ nombreFavoris }} livre(s) favori(s)</p>
+
+  <!-- 1. Formulaire d'ajout : @submit.prevent empêche le rechargement de la page -->
+  <form @submit.prevent="ajouterLivre">
+    <h3>Ajouter un livre</h3>
+
+    <!-- .trim (bonus) : enlève les espaces au début et à la fin -->
+    <p><input v-model.trim="newBook.title" placeholder="Titre"></p>
+
+    <!-- .lazy (bonus) : la valeur est mise à jour seulement quand on quitte le champ -->
+    <p><input v-model.lazy="newBook.author" placeholder="Auteur"></p>
+
+    <p><input v-model.number="newBook.year" type="number" placeholder="Année"></p>
+
+    <p>
+      <select v-model="newBook.genre">
+        <option>Roman</option>
+        <option>Science-fiction</option>
+        <option>Informatique</option>
+        <option>Conte philosophique</option>
+        <option>Autre</option>
+      </select>
+    </p>
+
+    <p><label><input type="checkbox" v-model="newBook.isFav"> Favori</label></p>
+
+    <!-- 5. Mots-clés : on valide avec la touche Entrée -->
+    <p>
+      <!-- keydown.enter.prevent : sans ça, Entrée enverrait tout le formulaire -->
+      <input v-model="nouveauMotCle"
+             placeholder="Mot-clé puis Entrée"
+             @keydown.enter.prevent
+             @keyup.enter="ajouterMotCle">
+    </p>
+    <p>
+      <span v-for="mot in newBook.keywords" :key="mot" class="chip">
+        {{ mot }}
+        <!-- type="button" : sinon ce bouton enverrait le formulaire -->
+        <button type="button" @click="retirerMotCle(mot)">×</button>
+      </span>
+    </p>
+
+    <!-- 2. Bouton désactivé tant que le formulaire n'est pas valide -->
+    <button type="submit" :disabled="!formulaireValide">Ajouter</button>
+  </form>
+
+  <p>
+    <button @click="seulementFavoris = !seulementFavoris">
+      {{ seulementFavoris ? 'Afficher tous les livres' : 'Afficher uniquement les favoris' }}
+    </button>
+  </p>
+
+  <!-- 4. Clic sur la carte = basculer le favori -->
+  <div v-for="book in livresAffiches" :key="book.id"
+       class="book" :class="{ favori: book.isFav }"
+       @click="toggleFavori(book)">
+
+    <h3>{{ book.title }}</h3>
+    <p>{{ book.author }} — {{ book.year }}</p>
+    <span v-if="book.isFav" class="badge-favori">Favori</span>
+
+    <p>
+      <span v-for="mot in book.keywords" :key="mot" class="chip">{{ mot }}</span>
+    </p>
+
+    <!-- .stop : le clic ne "remonte" pas jusqu'à la carte (sinon le favori changerait aussi) -->
+    <button @click.stop="toggleDetails(book.id)">Détails</button>
+    <p v-show="detailsOuverts[book.id]">Genre : {{ book.genre }}</p>
+
+    <!-- 3. Supprimer -->
+    <button @click.stop="supprimerLivre(book)">Supprimer</button>
+  </div>
+
+  <p v-if="livresAffiches.length === 0">Aucun livre à afficher.</p>
+</div>
+
+<script>
+  Vue.createApp({
+    data() {
+      return {
+        books: [
+          { id: 1, title: 'Le Petit Prince', author: 'Antoine de Saint-Exupéry', year: 1943, genre: 'Conte philosophique', isFav: true, keywords: ['enfance', 'amitié'] },
+          { id: 2, title: 'L\'Étranger', author: 'Albert Camus', year: 1942, genre: 'Roman', isFav: false, keywords: ['absurde'] },
+          { id: 3, title: 'Les Misérables', author: 'Victor Hugo', year: 1862, genre: 'Roman', isFav: true, keywords: ['justice', 'France'] },
+          { id: 4, title: 'Clean Code', author: 'Robert C. Martin', year: 2008, genre: 'Informatique', isFav: false, keywords: ['programmation'] },
+          { id: 5, title: 'Dune', author: 'Frank Herbert', year: 1965, genre: 'Science-fiction', isFav: true, keywords: ['désert', 'pouvoir'] },
+          { id: 6, title: 'Le Passé simple', author: 'Driss Chraïbi', year: 1954, genre: 'Roman', isFav: false, keywords: ['Maroc'] }
+        ],
+        prochainId: 7,
+        newBook: { title: '', author: '', year: 2024, genre: 'Roman', isFav: false, keywords: [] },
+        nouveauMotCle: '',
+        detailsOuverts: {},
+        seulementFavoris: false
+      };
+    },
+
+    computed: {
+      // 2. Valide seulement si le titre ET l'auteur ne sont pas vides
+      formulaireValide() {
+        return this.newBook.title.trim() !== '' && this.newBook.author.trim() !== '';
+      },
+
+      nombreFavoris() {
+        return this.books.filter(b => b.isFav).length;
+      },
+
+      livresAffiches() {
+        if (this.seulementFavoris) {
+          return this.books.filter(b => b.isFav);
+        }
+        return this.books;
+      }
+    },
+
+    methods: {
+      // 1. Ajouter une COPIE de newBook (avec un nouvel id), puis réinitialiser
+      ajouterLivre() {
+        if (!this.formulaireValide) {
+          return;
+        }
+        this.books.push({
+          id: this.prochainId,
+          title: this.newBook.title,
+          author: this.newBook.author,
+          year: this.newBook.year,
+          genre: this.newBook.genre,
+          isFav: this.newBook.isFav,
+          keywords: [...this.newBook.keywords]   // copie de la liste de mots-clés
+        });
+        this.prochainId = this.prochainId + 1;
+        this.newBook = { title: '', author: '', year: 2024, genre: 'Roman', isFav: false, keywords: [] };
+      },
+
+      // 3. On compare les id, pas les objets
+      supprimerLivre(book) {
+        this.books = this.books.filter(b => b.id !== book.id);
+      },
+
+      // 4. Inverser le favori
+      toggleFavori(book) {
+        book.isFav = !book.isFav;
+      },
+
+      toggleDetails(id) {
+        this.detailsOuverts[id] = !this.detailsOuverts[id];
+      },
+
+      // 5. Mots-clés (sans doublon)
+      ajouterMotCle() {
+        const mot = this.nouveauMotCle.trim();
+        if (mot !== '' && !this.newBook.keywords.includes(mot)) {
+          this.newBook.keywords.push(mot);
+        }
+        this.nouveauMotCle = '';
+      },
+      retirerMotCle(mot) {
+        this.newBook.keywords = this.newBook.keywords.filter(k => k !== mot);
+      }
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>

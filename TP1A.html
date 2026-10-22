@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Suivi de budget</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: 20px auto; }
+    .ok { background: #dcfce7; padding: 8px; }
+    .attention { background: #fef3c7; padding: 8px; }
+    .depasse { background: #fee2e2; padding: 8px; }
+    .active { background: #2563eb; color: white; }
+    li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <h1>Mon budget</h1>
+
+  <!-- Budget modifiable -->
+  <p>Budget mensuel : <input type="number" v-model.number="budgetMensuel"> MAD</p>
+
+  <!-- Alerte : les 3 balises doivent se suivre, sans rien entre elles -->
+  <p v-if="totalGeneral < budgetMensuel * 0.8" class="ok">Tout va bien ({{ totalGeneral }} MAD)</p>
+  <p v-else-if="totalGeneral <= budgetMensuel" class="attention">Attention, budget bientôt atteint ({{ totalGeneral }} MAD)</p>
+  <p v-else class="depasse">Budget dépassé ! ({{ totalGeneral }} MAD)</p>
+
+  <!-- Formulaire -->
+  <form @submit.prevent="ajouterDepense">
+    <input v-model="nouvelleDepense.titre" placeholder="Titre">
+    <input v-model.number="nouvelleDepense.montant" type="number" placeholder="Montant">
+    <select v-model="nouvelleDepense.categorie">
+      <option>Alimentation</option>
+      <option>Transport</option>
+      <option>Loisirs</option>
+      <option>Études</option>
+    </select>
+    <input v-model="nouvelleDepense.date" type="date">
+    <button type="submit">Ajouter</button>
+  </form>
+
+  <!-- Filtres -->
+  <p>
+    <button :class="{ active: filtreCategorie === 'toutes' }" @click="selectionnerCategorie('toutes')">Toutes</button>
+    <button :class="{ active: filtreCategorie === 'Alimentation' }" @click="selectionnerCategorie('Alimentation')">Alimentation</button>
+    <button :class="{ active: filtreCategorie === 'Transport' }" @click="selectionnerCategorie('Transport')">Transport</button>
+    <button :class="{ active: filtreCategorie === 'Loisirs' }" @click="selectionnerCategorie('Loisirs')">Loisirs</button>
+    <button :class="{ active: filtreCategorie === 'Études' }" @click="selectionnerCategorie('Études')">Études</button>
+  </p>
+
+  <!-- Totaux -->
+  <p>Total affiché : {{ totalFiltre }} MAD | Total général : {{ totalGeneral }} MAD | Moyenne : {{ moyenneDepense }} MAD</p>
+
+  <!-- Détail par catégorie -->
+  <button @click="afficherStats = !afficherStats">Afficher le détail par catégorie</button>
+  <ul v-show="afficherStats">
+    <li v-for="cat in categories" :key="cat">{{ cat }} : {{ totalCategorie(cat) }} MAD</li>
+  </ul>
+
+  <!-- Liste -->
+  <ul v-if="depensesTriees.length > 0">
+    <li v-for="d in depensesTriees" :key="d.id">
+      {{ d.date }} - {{ d.titre }} ({{ d.categorie }}) : {{ d.montant }} MAD
+      <button @click="supprimerDepense(d)">Supprimer</button>
+    </li>
+  </ul>
+  <p v-else>Aucune dépense à afficher.</p>
+</div>
+
+<script>
+  Vue.createApp({
+    data() {
+      return {
+        categories: ['Alimentation', 'Transport', 'Loisirs', 'Études'],
+        depenses: [
+          { id: 1, titre: 'Courses', montant: 120, categorie: 'Alimentation', date: '2026-10-03' },
+          { id: 2, titre: 'Bus mensuel', montant: 80, categorie: 'Transport', date: '2026-10-01' },
+          { id: 3, titre: 'Cinéma', montant: 60, categorie: 'Loisirs', date: '2026-10-12' },
+          { id: 4, titre: 'Livres', montant: 45, categorie: 'Études', date: '2026-10-08' }
+        ],
+        prochainId: 5,
+        nouvelleDepense: { titre: '', montant: 0, categorie: 'Alimentation', date: '' },
+        filtreCategorie: 'toutes',
+        budgetMensuel: 400,
+        afficherStats: false
+      };
+    },
+
+    computed: {
+      // Dépenses selon le filtre choisi
+      depensesFiltrees() {
+        if (this.filtreCategorie === 'toutes') {
+          return this.depenses;
+        }
+        return this.depenses.filter(d => d.categorie === this.filtreCategorie);
+      },
+
+      // Somme des dépenses affichées
+      totalFiltre() {
+        let total = 0;
+        for (const d of this.depensesFiltrees) {
+          total = total + d.montant;
+        }
+        return total;
+      },
+
+      // Somme de TOUTES les dépenses (sert pour l'alerte)
+      totalGeneral() {
+        let total = 0;
+        for (const d of this.depenses) {
+          total = total + d.montant;
+        }
+        return total;
+      },
+
+      // Moyenne (on évite la division par zéro)
+      moyenneDepense() {
+        if (this.depensesFiltrees.length === 0) {
+          return 0;
+        }
+        return Math.round(this.totalFiltre / this.depensesFiltrees.length);
+      },
+
+      // Plus récent d'abord, sans sort : on place chaque dépense au bon endroit
+      depensesTriees() {
+        const resultat = [];
+        for (const d of this.depensesFiltrees) {
+          let position = 0;
+          while (position < resultat.length && resultat[position].date >= d.date) {
+            position = position + 1;
+          }
+          resultat.splice(position, 0, d);
+        }
+        return resultat;
+      }
+    },
+
+    methods: {
+      selectionnerCategorie(cat) {
+        this.filtreCategorie = cat;
+      },
+
+      totalCategorie(cat) {
+        let total = 0;
+        for (const d of this.depenses) {
+          if (d.categorie === cat) {
+            total = total + d.montant;
+          }
+        }
+        return total;
+      },
+
+      ajouterDepense() {
+        if (this.nouvelleDepense.titre === '' || this.nouvelleDepense.montant <= 0 || this.nouvelleDepense.date === '') {
+          return; // formulaire incomplet
+        }
+        this.depenses.push({
+          id: this.prochainId,
+          titre: this.nouvelleDepense.titre,
+          montant: this.nouvelleDepense.montant,
+          categorie: this.nouvelleDepense.categorie,
+          date: this.nouvelleDepense.date
+        });
+        this.prochainId = this.prochainId + 1;
+        // on vide le formulaire
+        this.nouvelleDepense.titre = '';
+        this.nouvelleDepense.montant = 0;
+        this.nouvelleDepense.date = '';
+      },
+
+      supprimerDepense(depense) {
+        this.depenses = this.depenses.filter(d => d.id !== depense.id);
+      }
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>

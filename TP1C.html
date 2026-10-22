@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Tableau de bord de notes</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 750px; margin: 20px auto; }
+    .mention { padding: 8px; font-weight: bold; border-radius: 6px; }
+    .tres-bien { background: #bbf7d0; color: #166534; }
+    .bien { background: #d9f99d; color: #3f6212; }
+    .assez-bien { background: #fef08a; color: #854d0e; }
+    .passable { background: #fed7aa; color: #9a3412; }
+    .insuffisant { background: #fecaca; color: #991b1b; }
+    .badge { background: #dc2626; color: white; padding: 2px 8px; border-radius: 10px; font-size: 13px; }
+    .detail { background: #f3f4f6; padding: 8px; margin-top: 5px; }
+    li { margin: 8px 0; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <h1>Tableau de bord de notes</h1>
+
+  <!-- 1. Moyenne générale -->
+  <h2>Moyenne générale : {{ moyenneGenerale }} / 20</h2>
+
+  <!-- 2. Mention : 5 branches, les balises doivent se suivre sans rien entre elles -->
+  <p v-if="moyenneGenerale >= 16" class="mention tres-bien">Mention : Très bien</p>
+  <p v-else-if="moyenneGenerale >= 14" class="mention bien">Mention : Bien</p>
+  <p v-else-if="moyenneGenerale >= 12" class="mention assez-bien">Mention : Assez bien</p>
+  <p v-else-if="moyenneGenerale >= 10" class="mention passable">Mention : Passable</p>
+  <p v-else class="mention insuffisant">Mention : Insuffisant</p>
+
+  <!-- Aller plus loin : tousValides() -->
+  <p v-if="tousValides()">Tous les modules sont validés.</p>
+  <p v-else>Certains modules ne sont pas validés.</p>
+
+  <!-- 5. Meilleur et moins bon module (classement global, indépendant de la recherche) -->
+  <p v-if="moduleMax">
+    Meilleur module : <strong>{{ moduleMax.nom }}</strong> ({{ moduleMax.note }}) |
+    Moins bon module : <strong>{{ moduleMin.nom }}</strong> ({{ moduleMin.note }})
+  </p>
+
+  <!-- 3. Modules à rattraper, avec le nombre dans le badge -->
+  <h3>À rattraper <span class="badge">{{ modulesARattraper.length }}</span></h3>
+  <ul v-if="modulesARattraper.length > 0">
+    <li v-for="m in modulesARattraper" :key="m.id">{{ m.nom }} : {{ m.note }}</li>
+  </ul>
+  <p v-else>Aucun module à rattraper.</p>
+
+  <!-- 4. Recherche et classement -->
+  <h3>Classement des modules</h3>
+  <input v-model="recherche" placeholder="Rechercher un module...">
+
+  <!-- 6. Liste -->
+  <ol v-if="modulesAffiches.length > 0">
+    <li v-for="module in modulesAffiches" :key="module.id">
+      {{ module.nom }} : <strong>{{ module.note }}</strong> (coef {{ module.coefficient }})
+      <button @click="toggleDetail(module)">Détail</button>
+      <button @click="supprimerModule(module)">Supprimer</button>
+      <div v-show="detailOuvertId === module.id" class="detail">
+        Points pondérés : {{ module.note * module.coefficient }}
+      </div>
+    </li>
+  </ol>
+  <p v-else>Aucun module trouvé.</p>
+
+  <!-- Ajouter un module -->
+  <h3>Ajouter un module</h3>
+  <form @submit.prevent="ajouterModule">
+    <input v-model="nouveauModule.nom" placeholder="Nom du module">
+    <input v-model.number="nouveauModule.note" type="number" min="0" max="20" step="0.25" placeholder="Note">
+    <input v-model.number="nouveauModule.coefficient" type="number" min="1" placeholder="Coefficient">
+    <button type="submit">Ajouter</button>
+  </form>
+</div>
+
+<script>
+  Vue.createApp({
+    data() {
+      return {
+        modules: [
+          { id: 1, nom: 'Développement backend JS', note: 15.5, coefficient: 3 },
+          { id: 2, nom: 'Bases de données', note: 13, coefficient: 3 },
+          { id: 3, nom: 'Java POO', note: 17, coefficient: 2 },
+          { id: 4, nom: 'Assembleur 8086', note: 8.5, coefficient: 2 },
+          { id: 5, nom: 'Anglais académique', note: 14, coefficient: 1 }
+        ],
+        prochainId: 6,
+        recherche: '',
+        detailOuvertId: null,
+        nouveauModule: { nom: '', note: 0, coefficient: 1 }
+      };
+    },
+
+    computed: {
+      // 1. Moyenne pondérée : toujours donner la valeur initiale 0 à reduce !
+      moyenneGenerale() {
+        const sommePoints = this.modules.reduce((acc, m) => acc + m.note * m.coefficient, 0);
+        const sommeCoefs = this.modules.reduce((acc, m) => acc + m.coefficient, 0);
+        if (sommeCoefs === 0) {
+          return 0; // évite la division par zéro
+        }
+        return Math.round((sommePoints / sommeCoefs) * 100) / 100;
+      },
+
+      // 3. Notes strictement inférieures à 10
+      modulesARattraper() {
+        return this.modules.filter(m => m.note < 10);
+      },
+
+      // 4. Copie triée du meilleur au moins bon (b - a = décroissant)
+      modulesTries() {
+        return [...this.modules].sort((a, b) => b.note - a.note);
+      },
+
+      // 4. Liste affichée = liste triée filtrée par la recherche
+      modulesAffiches() {
+        const texte = this.recherche.toLowerCase();
+        return this.modulesTries.filter(m => m.nom.toLowerCase().includes(texte));
+      },
+
+      // 5. On s'appuie sur modulesTries (pas sur modulesAffiches)
+      moduleMax() {
+        if (this.modulesTries.length === 0) {
+          return null;
+        }
+        return this.modulesTries[0];
+      },
+      moduleMin() {
+        if (this.modulesTries.length === 0) {
+          return null;
+        }
+        return this.modulesTries[this.modulesTries.length - 1];
+      }
+    },
+
+    methods: {
+      // Aller plus loin : every() renvoie true si TOUS les éléments respectent la condition
+      tousValides() {
+        return this.modules.length > 0 && this.modules.every(m => m.note >= 10);
+      },
+
+      toggleDetail(module) {
+        if (this.detailOuvertId === module.id) {
+          this.detailOuvertId = null;
+        } else {
+          this.detailOuvertId = module.id;
+        }
+      },
+
+      ajouterModule() {
+        if (this.nouveauModule.nom === '' || this.nouveauModule.coefficient <= 0) {
+          return; // formulaire incomplet
+        }
+        this.modules.push({
+          id: this.prochainId,
+          nom: this.nouveauModule.nom,
+          note: this.nouveauModule.note,
+          coefficient: this.nouveauModule.coefficient
+        });
+        this.prochainId = this.prochainId + 1;
+        this.nouveauModule.nom = '';
+        this.nouveauModule.note = 0;
+        this.nouveauModule.coefficient = 1;
+      },
+
+      supprimerModule(module) {
+        this.modules = this.modules.filter(m => m.id !== module.id);
+      }
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>

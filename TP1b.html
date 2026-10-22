@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Stock de la buvette</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 750px; margin: 20px auto; }
+    .bandeau-rouge { background: #fee2e2; color: #991b1b; padding: 8px; font-weight: bold; }
+    .bandeau-orange { background: #fef3c7; color: #92400e; padding: 8px; font-weight: bold; }
+    .badge { padding: 2px 8px; border-radius: 10px; color: white; font-size: 12px; }
+    .rupture { background: #dc2626; }
+    .faible { background: #f59e0b; }
+    .ok { background: #16a34a; }
+    li { margin: 10px 0; }
+    .detail { background: #f3f4f6; padding: 8px; margin-top: 5px; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <h1>Stock de la buvette</h1>
+
+  <!-- Bandeau d'alerte globale (aller plus loin) : les balises se suivent -->
+  <p v-if="nombreRupture > 0" class="bandeau-rouge">
+    Alerte : {{ nombreRupture }} article(s) en rupture de stock !
+  </p>
+  <p v-else-if="nombreStockFaible > 0" class="bandeau-orange">
+    Attention : {{ nombreStockFaible }} article(s) en stock faible.
+  </p>
+
+  <!-- 2. Résumé global (sur tout le stock) -->
+  <p>Valeur totale du stock : <strong>{{ valeurTotaleStock }}</strong> MAD |
+     Articles en rupture : <strong>{{ nombreRupture }}</strong></p>
+
+  <!-- 1. Recherche et filtre -->
+  <p>
+    <input v-model="rechercheTexte" placeholder="Rechercher un article...">
+    <select v-model="filtreCategorie">
+      <option value="toutes">Toutes les catégories</option>
+      <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+    </select>
+  </p>
+
+  <!-- Liste des articles -->
+  <ul v-if="articlesFiltres.length > 0">
+    <li v-for="article in articlesFiltres" :key="article.id">
+      <strong>{{ article.nom }}</strong> ({{ article.categorie }}) -
+      {{ article.prixUnitaire }} MAD -
+
+      <!-- 4. Ajuster la quantité -->
+      <button @click="decrementer(article)">-</button>
+      {{ article.quantite }}
+      <button @click="incrementer(article)">+</button>
+
+      <!-- 3. Trois états : "Rupture" doit être testé EN PREMIER -->
+      <span v-if="article.quantite === 0" class="badge rupture">Rupture</span>
+      <span v-else-if="article.quantite <= article.seuilAlerte" class="badge faible">Stock faible</span>
+      <span v-else class="badge ok">Ok</span>
+
+      <!-- 5. Boutons -->
+      <button @click="toggleDetail(article)">Détail</button>
+      <button @click="ouvrirReappro(article)">Réapprovisionner</button>
+      <button @click="supprimerArticle(article)">Supprimer</button>
+
+      <!-- Panneau de détail (un seul ouvert à la fois) -->
+      <div v-show="detailOuvertId === article.id" class="detail">
+        Seuil d'alerte : {{ article.seuilAlerte }} |
+        Valeur en stock : {{ article.quantite * article.prixUnitaire }} MAD
+      </div>
+
+      <!-- Petit formulaire de réapprovisionnement -->
+      <div v-if="reapproId === article.id" class="detail">
+        Quantité à ajouter :
+        <input type="number" min="1" v-model.number="quantiteReappro">
+        <button @click="validerReappro(article)">Valider</button>
+        <button @click="reapproId = null">Annuler</button>
+      </div>
+    </li>
+  </ul>
+  <p v-else>Aucun article trouvé.</p>
+
+  <!-- Ajouter un article -->
+  <h3>Ajouter un article</h3>
+  <form @submit.prevent="ajouterArticle">
+    <input v-model="nouvelArticle.nom" placeholder="Nom">
+    <select v-model="nouvelArticle.categorie">
+      <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+    </select>
+    <input v-model.number="nouvelArticle.quantite" type="number" min="0" placeholder="Quantité">
+    <input v-model.number="nouvelArticle.prixUnitaire" type="number" min="0" placeholder="Prix">
+    <input v-model.number="nouvelArticle.seuilAlerte" type="number" min="0" placeholder="Seuil">
+    <button type="submit">Ajouter</button>
+  </form>
+</div>
+
+<script>
+  Vue.createApp({
+    data() {
+      return {
+        categories: ['Boissons', 'Snacks', 'Sandwichs'],
+        articles: [
+          { id: 1, nom: 'Eau 50cl', categorie: 'Boissons', quantite: 40, prixUnitaire: 3, seuilAlerte: 10 },
+          { id: 2, nom: 'Jus d\'orange', categorie: 'Boissons', quantite: 6, prixUnitaire: 5, seuilAlerte: 8 },
+          { id: 3, nom: 'Chips', categorie: 'Snacks', quantite: 0, prixUnitaire: 4, seuilAlerte: 5 },
+          { id: 4, nom: 'Biscuits', categorie: 'Snacks', quantite: 25, prixUnitaire: 2, seuilAlerte: 10 },
+          { id: 5, nom: 'Sandwich thon', categorie: 'Sandwichs', quantite: 12, prixUnitaire: 12, seuilAlerte: 5 }
+        ],
+        prochainId: 6,
+        rechercheTexte: '',
+        filtreCategorie: 'toutes',
+        detailOuvertId: null,
+        reapproId: null,
+        quantiteReappro: 1,
+        nouvelArticle: { nom: '', categorie: 'Boissons', quantite: 0, prixUnitaire: 0, seuilAlerte: 5 }
+      };
+    },
+
+    computed: {
+      // 1. Un article est gardé s'il respecte les DEUX critères
+      articlesFiltres() {
+        const texte = this.rechercheTexte.toLowerCase();
+        return this.articles.filter(a => {
+          const bonNom = a.nom.toLowerCase().includes(texte);
+          const bonneCategorie = this.filtreCategorie === 'toutes' || a.categorie === this.filtreCategorie;
+          return bonNom && bonneCategorie;
+        });
+      },
+
+      // 2. Résumé sur TOUS les articles (pas sur articlesFiltres)
+      valeurTotaleStock() {
+        let total = 0;
+        for (const a of this.articles) {
+          total = total + a.quantite * a.prixUnitaire;
+        }
+        return total;
+      },
+
+      nombreRupture() {
+        let nombre = 0;
+        for (const a of this.articles) {
+          if (a.quantite === 0) {
+            nombre = nombre + 1;
+          }
+        }
+        return nombre;
+      },
+
+      // Stock faible = sous le seuil mais pas en rupture
+      nombreStockFaible() {
+        let nombre = 0;
+        for (const a of this.articles) {
+          if (a.quantite > 0 && a.quantite <= a.seuilAlerte) {
+            nombre = nombre + 1;
+          }
+        }
+        return nombre;
+      }
+    },
+
+    methods: {
+      // 4. On modifie directement l'objet article
+      incrementer(article) {
+        article.quantite = article.quantite + 1;
+      },
+      decrementer(article) {
+        if (article.quantite > 0) {
+          article.quantite = article.quantite - 1;
+        }
+      },
+
+      // 5. Un seul panneau ouvert : si on reclique, on ferme
+      toggleDetail(article) {
+        if (this.detailOuvertId === article.id) {
+          this.detailOuvertId = null;
+        } else {
+          this.detailOuvertId = article.id;
+        }
+      },
+
+      supprimerArticle(article) {
+        this.articles = this.articles.filter(a => a.id !== article.id);
+      },
+
+      ajouterArticle() {
+        if (this.nouvelArticle.nom === '' || this.nouvelArticle.prixUnitaire <= 0) {
+          return; // formulaire incomplet
+        }
+        this.articles.push({
+          id: this.prochainId,
+          nom: this.nouvelArticle.nom,
+          categorie: this.nouvelArticle.categorie,
+          quantite: this.nouvelArticle.quantite,
+          prixUnitaire: this.nouvelArticle.prixUnitaire,
+          seuilAlerte: this.nouvelArticle.seuilAlerte
+        });
+        this.prochainId = this.prochainId + 1;
+        this.nouvelArticle.nom = '';
+        this.nouvelArticle.quantite = 0;
+        this.nouvelArticle.prixUnitaire = 0;
+      },
+
+      // Aller plus loin : réapprovisionner un article existant
+      ouvrirReappro(article) {
+        this.reapproId = article.id;
+        this.quantiteReappro = 1;
+      },
+      validerReappro(article) {
+        if (this.quantiteReappro > 0) {
+          article.quantite = article.quantite + this.quantiteReappro;
+        }
+        this.reapproId = null;
+      }
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>TP1 - Catalogue de livres</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 650px; margin: 20px auto; }
+    .book { border: 1px solid #ccc; border-radius: 8px; padding: 10px; margin: 10px 0; background: #fafafa; }
+    /* Étape 4 : classe favori (bordure et fond dorés) */
+    .favori { border: 2px solid #d4a017; background: #fff8e1; }
+    .badge-favori { background: #d4a017; color: white; font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <h1>Catalogue de livres</h1>
+
+  <!-- Étape 5 : compteur (propriété calculée) -->
+  <p>{{ nombreFavoris }} livre(s) favori(s)</p>
+
+  <!-- Étape 6 : bouton de filtre -->
+  <button @click="seulementFavoris = !seulementFavoris">
+    {{ seulementFavoris ? 'Afficher tous les livres' : 'Afficher uniquement les favoris' }}
+  </button>
+
+  <!-- Étape 3 : v-for avec :key="book.id" (jamais l'index)
+       Étape 4 : :class ajoute "favori" en gardant la classe "book"
+       Étape 6 : on boucle sur livresAffiches, donc pas de v-if sur le même élément -->
+  <div v-for="book in livresAffiches" :key="book.id" class="book" :class="{ favori: book.isFav }">
+    <h3>{{ book.title }}</h3>
+    <p>{{ book.author }} — {{ book.year }}</p>
+
+    <!-- Étape 3 : badge avec v-if -->
+    <span v-if="book.isFav" class="badge-favori">Favori</span>
+
+    <!-- Étape 2 : v-show (l'élément reste dans le HTML, il est juste caché) -->
+    <button @click="toggleDetails(book.id)">Détails</button>
+    <p v-show="detailsOuverts[book.id]">Genre : {{ book.genre }}</p>
+  </div>
+
+  <p v-if="livresAffiches.length === 0">Aucun livre à afficher.</p>
+</div>
+
+<script>
+  Vue.createApp({
+    data() {
+      return {
+        // Étape 2 : contenu de books.json (ici des exemples, colle le tien)
+        books: [
+          { id: 1, title: 'Le Petit Prince', author: 'Antoine de Saint-Exupéry', year: 1943, genre: 'Conte philosophique', isFav: true },
+          { id: 2, title: 'L\'Étranger', author: 'Albert Camus', year: 1942, genre: 'Roman', isFav: false },
+          { id: 3, title: 'Les Misérables', author: 'Victor Hugo', year: 1862, genre: 'Roman historique', isFav: true },
+          { id: 4, title: 'Clean Code', author: 'Robert C. Martin', year: 2008, genre: 'Informatique', isFav: false },
+          { id: 5, title: 'Dune', author: 'Frank Herbert', year: 1965, genre: 'Science-fiction', isFav: true },
+          { id: 6, title: 'Le Passé simple', author: 'Driss Chraïbi', year: 1954, genre: 'Roman', isFav: false }
+        ],
+        detailsOuverts: {},       // retient quel livre a ses détails ouverts
+        seulementFavoris: false   // true = on affiche seulement les favoris
+      };
+    },
+
+    computed: {
+      // Étape 5 : nombre de livres favoris
+      nombreFavoris() {
+        return this.books.filter(b => b.isFav).length;
+      },
+
+      // Bonus : tri du plus récent au plus ancien, sur une COPIE ([...])
+      booksTriesParAnnee() {
+        return [...this.books].sort((a, b) => b.year - a.year);
+      },
+
+      // Étape 6 : l'alternative à v-if + v-for = filtrer dans une computed
+      livresAffiches() {
+        if (this.seulementFavoris) {
+          return this.booksTriesParAnnee.filter(b => b.isFav);
+        }
+        return this.booksTriesParAnnee;
+      }
+    },
+
+    methods: {
+      toggleDetails(id) {
+        this.detailsOuverts[id] = !this.detailsOuverts[id];
+      }
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>
